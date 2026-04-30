@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+groq
+python-dotenv
+yt-dlp
+ffmpeg-python
+reportlab
+resemblyzer
+pyannote.audio
+sqlalchemy
+numpy
