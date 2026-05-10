@@ -58,4 +58,5 @@ def transcribe_audio(audio_path: str) -> dict[str, Any]:
         seg_text = str(segment.get("text", "")).strip()
         segments.append({"start": start, "end": end, "text": seg_text})
 
-    return {"text": text, "segments": segments}
+    language = str(result.get("language", "")).strip().lower()
+    return {"text": text, "segments": segments, "language": language}

@@ -10,3 +10,5 @@ resemblyzer
 pyannote.audio
 sqlalchemy
 numpy
+arabic-reshaper
+python-bidi

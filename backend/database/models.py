@@ -24,6 +24,11 @@ class Report(Base):
     source = Column(String, nullable=False)
     summary = Column(Text, nullable=False)
     transcription = Column(Text, nullable=False)
+    report_language = Column(String, nullable=False, default="en")
+    status = Column(String, nullable=False, default="completed", index=True)
+    step = Column(String, nullable=False, default="finished")
+    error_message = Column(Text, nullable=True)
+    pdf_path = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     segments = relationship(

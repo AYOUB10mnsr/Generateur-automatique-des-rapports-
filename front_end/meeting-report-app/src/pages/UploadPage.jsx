@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle,
@@ -17,6 +17,7 @@ import {
   processLocalMediaFile,
   processTextNotes,
   downloadReportDocx,
+  getReportStatus,
 } from '../services/api';
 
 const MEDIA_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.mov'];
@@ -40,10 +41,17 @@ function UploadPage() {
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingSource, setLoadingSource] = useState('');
+  const [reportId, setReportId] = useState(null);
+  const [backendStatus, setBackendStatus] = useState('idle');
+  const [backendStep, setBackendStep] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('Prêt à générer');
   const [reportText, setReportText] = useState('');
   const [latestPayload, setLatestPayload] = useState(null);
+  const pollerRef = useRef(null);
+  const pollingInFlightRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const { isValid } = useYouTubeUrlValidator(url);
   const hasUrl = url.trim().length > 0 && isValid;
@@ -68,6 +76,20 @@ function UploadPage() {
     setError('');
     setInfoMessage('');
   };
+
+  const stopPolling = () => {
+    if (pollerRef.current) {
+      clearInterval(pollerRef.current);
+      pollerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      stopPolling();
+    };
+  }, []);
 
   const startProgress = () => {
     setProgress(10);
@@ -144,6 +166,9 @@ function UploadPage() {
     if (event) {
       event.preventDefault();
     }
+    if (isLoading) {
+      return;
+    }
 
     clearMessages();
     const source = sourceOverride || sourcePriority;
@@ -168,13 +193,12 @@ function UploadPage() {
       return;
     }
 
+    let keepLoading = false;
     try {
       setIsLoading(true);
+      setLoadingSource(source);
       startProgress();
       updateProgress(25, 'Connexion au backend...');
-
-      const payload = buildPayload(source);
-      setLatestPayload(payload);
 
       let response;
       if (source === 'file') {
@@ -188,24 +212,98 @@ function UploadPage() {
       if (!response || response.success === false) {
         throw new Error(response?.error || 'Erreur lors de la génération du rapport.');
       }
+      if (!response?.report_id) {
+        throw new Error('Aucun report_id retourné par le backend.');
+      }
 
-      updateProgress(70, 'Génération du rapport...');
-      const resultText = response.report || response.transcript || 'Contenu traité avec succès.';
-      setReportText(resultText);
-      endProgress();
-      setInfoMessage('Rapport généré. Vous pouvez le télécharger en DOCX.');
+      setLatestPayload(response);
+      setReportId(response.report_id);
+      setBackendStatus('processing');
+      setBackendStep(response.step || 'uploading');
+      setInfoMessage('Traitement lancé. Génération du rapport en arrière-plan...');
+      updateProgress(35, response.message || 'Processing your meeting...');
+      keepLoading = true;
+
+      stopPolling();
+      pollerRef.current = setInterval(async () => {
+        if (pollingInFlightRef.current) {
+          return;
+        }
+        pollingInFlightRef.current = true;
+        try {
+          const statusData = await getReportStatus(response.report_id);
+          console.log('Current backend status:', statusData?.status, 'step:', statusData?.step);
+          if (!isMountedRef.current) {
+            return;
+          }
+          if (statusData?.status === 'processing') {
+            setBackendStatus('processing');
+            setBackendStep(statusData?.step || '');
+            setProgress((prev) => Math.min(prev + 5, 90));
+            setProgressLabel(statusData?.message || 'Processing your meeting...');
+            return;
+          }
+          if (statusData?.status === 'completed') {
+            stopPolling();
+            setBackendStatus('completed');
+            setBackendStep(statusData?.step || 'finished');
+            const fullReport = statusData.report || {};
+            setLatestPayload({ report_id: response.report_id, reportId: response.report_id });
+            setReportText(fullReport.summary || 'Rapport généré avec succès.');
+            endProgress();
+            setInfoMessage(statusData?.message || 'Rapport généré. Vous pouvez le télécharger en PDF.');
+            setIsLoading(false);
+            setLoadingSource('');
+            return;
+          }
+          if (statusData?.status === 'error') {
+            stopPolling();
+            setBackendStatus('error');
+            setBackendStep(statusData?.step || 'error');
+            setError(statusData?.message || 'Erreur pendant le traitement du rapport.');
+            setProgress(0);
+            setProgressLabel('Erreur');
+            setIsLoading(false);
+            setLoadingSource('');
+          }
+        } catch (pollErr) {
+          if (!isMountedRef.current) {
+            return;
+          }
+          stopPolling();
+          setBackendStatus('error');
+          setBackendStep('error');
+          setError(pollErr?.message || 'Erreur de suivi du traitement.');
+          setProgress(0);
+          setProgressLabel('Erreur');
+          setIsLoading(false);
+          setLoadingSource('');
+        } finally {
+          pollingInFlightRef.current = false;
+        }
+      }, 5000);
     } catch (err) {
+      setBackendStatus('error');
+      setBackendStep('error');
       setError(err?.message || 'Impossible de traiter votre demande.');
       setReportText('');
       setProgress(0);
       setProgressLabel('Erreur');
     } finally {
-      setIsLoading(false);
+      if (!keepLoading) {
+        setIsLoading(false);
+        setLoadingSource('');
+      }
     }
   };
 
   const handleDownload = async () => {
     clearMessages();
+
+    if (backendStatus !== 'completed') {
+      setError('Le rapport n’est pas encore prêt pour le téléchargement.');
+      return;
+    }
 
     if (!latestPayload) {
       setError('Aucun rapport disponible pour téléchargement.');
@@ -303,11 +401,11 @@ function UploadPage() {
                   type="submit"
                   variant="primary"
                   size="lg"
-                  isLoading={isLoading && sourcePriority === 'url'}
+                  isLoading={isLoading && loadingSource === 'url'}
                   disabled={!isValid || isLoading}
                   className="w-full"
                 >
-                  {isLoading && sourcePriority === 'url' ? 'Traitement...' : 'Générer le rapport'}
+                  {isLoading && loadingSource === 'url' ? 'Traitement...' : 'Générer le rapport'}
                 </Button>
               </form>
             </Card>
@@ -368,12 +466,12 @@ function UploadPage() {
                 type="button"
                 variant="primary"
                 size="lg"
-                isLoading={isLoading && sourcePriority === 'file'}
+                isLoading={isLoading && loadingSource === 'file'}
                 disabled={!hasFile || isLoading}
                 onClick={(event) => handleSubmit(event, 'file')}
                 className="mt-6 w-full"
               >
-                {isLoading && sourcePriority === 'file' ? 'Téléversement...' : 'Traiter le fichier'}
+                {isLoading && loadingSource === 'file' ? 'Téléversement...' : 'Traiter le fichier'}
               </Button>
             </Card>
 
@@ -411,12 +509,12 @@ function UploadPage() {
                 type="button"
                 variant="primary"
                 size="lg"
-                isLoading={isLoading && sourcePriority === 'text'}
+                isLoading={isLoading && loadingSource === 'text'}
                 disabled={!hasText || isLoading}
                 onClick={(event) => handleSubmit(event, 'text')}
                 className="mt-6 w-full"
               >
-                {isLoading && sourcePriority === 'text' ? 'Génération en cours...' : 'Générer à partir du texte'}
+                {isLoading && loadingSource === 'text' ? 'Génération en cours...' : 'Générer à partir du texte'}
               </Button>
             </Card>
           </div>
@@ -484,6 +582,8 @@ function UploadPage() {
               <div>
                 <p className="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Progrès</p>
                 <p className="text-lg font-semibold text-slate-900 dark:text-white">{progressLabel}</p>
+                {reportId && <p className="text-xs text-slate-500 dark:text-slate-400">Report ID: {reportId}</p>}
+                {backendStep && <p className="text-xs text-slate-500 dark:text-slate-400">Step: {backendStep}</p>}
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400">{progress}%</p>
             </div>
@@ -508,7 +608,8 @@ function UploadPage() {
                   variant="secondary"
                   size="md"
                   onClick={handleDownload}
-                  isLoading={isLoading}
+                  isLoading={isLoading && backendStatus !== 'completed'}
+                  disabled={backendStatus !== 'completed' || !latestPayload}
                 >
                   Télécharger .docx
                 </Button>

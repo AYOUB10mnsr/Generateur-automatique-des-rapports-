@@ -1,245 +1,105 @@
-import axios from 'axios';
+import axios from "axios";
 
-/**
- * API Service - Handles all backend API calls
- * Currently set up with mock responses
- */
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 120000, // Augmenté à 2 minutes pour gérer les transcriptions longues
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
+  timeout: 120000,
 });
 
+api.interceptors.request.use((config) => {
+  console.log(`[API][REQ] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+  return config;
+});
 
-// Add request interceptor
-apiClient.interceptors.request.use(
-  (config) => {
-    // Add authentication token if available
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
+api.interceptors.response.use(
+  (r) => {
+    console.log(`[API][RES] ${r.status} ${r.config.url}`);
+    return r.data;
   },
-  (error) => Promise.reject(error)
-);
-
-// Add response interceptor
-apiClient.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    console.error('API Error:', error);
-    return Promise.reject(error);
+  (e) => {
+    if (e?.code === "ECONNABORTED") {
+      const timeoutMessage =
+        "La requête a dépassé 120 secondes. Le traitement est long, veuillez réessayer.";
+      console.error("[API][ERR][TIMEOUT]", e?.config?.url, timeoutMessage);
+      return Promise.reject(new Error(timeoutMessage));
+    }
+    const detail = e?.response?.data?.detail;
+    if (e?.response?.status === 409) {
+      return Promise.reject(new Error("Le rapport est encore en cours de génération, veuillez patienter."));
+    }
+    const message =
+      typeof detail === "string"
+        ? detail
+        : typeof detail?.message === "string"
+          ? detail.message
+        : Array.isArray(detail)
+          ? detail.map((x) => x?.msg).filter(Boolean).join(", ")
+          : e?.message || "Request failed";
+    console.error("[API][ERR]", e?.response?.status, e?.config?.url, message);
+    return Promise.reject(new Error(message));
   }
 );
 
-/**
- * Process a YouTube video and generate report
- */
-export const processYouTubeVideo = async (url) => {
-  const formData = new FormData();
-  formData.append('url', url);
-  return apiClient.post('/generate', formData);
-};
+export const apiHealth = () => api.get("/health");
 
-export const processLocalMediaFile = async (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return apiClient.post('/generate', formData);
-};
-
-export const processTextNotes = async (text) => {
-  const formData = new FormData();
-  formData.append('text', text);
-  return apiClient.post('/generate', formData);
-};
-
-export const downloadReportDocx = async ({ url, text, file }) => {
-  const formData = new FormData();
-  if (url) {
-    formData.append('url', url);
-  }
-  if (text) {
-    formData.append('text', text);
-  }
+export const processMeeting = ({ file, youtubeUrl, lang = "auto" }) => {
   if (file) {
-    formData.append('file', file);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("lang", lang);
+    return api.post("/process/file", formData);
   }
-  return apiClient.post('/generate/download', formData, {
-    responseType: 'blob',
-  });
+  if (youtubeUrl) {
+    const formData = new FormData();
+    formData.append("url", youtubeUrl);
+    formData.append("lang", lang);
+    return api.post("/process/youtube", formData);
+  }
+  return Promise.reject(new Error("Please provide file or youtubeUrl"));
 };
 
-/**
- * Get processing progress
- */
-export const getProcessingProgress = async (reportId) => {
-  // Mock response
-  return new Promise((resolve) => {
-    const progress = Math.min(Math.random() * 100, 95);
-    resolve({
-      reportId,
-      progress: Math.round(progress),
-      currentStep: progress < 33 ? 0 : progress < 66 ? 1 : 2,
-      steps: ['Downloading', 'Transcribing', 'Generating'],
-    });
-  });
+export const listReports = () => api.get("/reports");
+export const getReportById = (id) => api.get(`/reports/${id}`);
+export const getReportStatus = (id) => api.get(`/reports/${id}/status`);
+export const deleteReportById = (id) => api.delete(`/reports/${id}`);
+export const downloadReportPdf = (id) => api.get(`/reports/${id}/pdf`, { responseType: "blob" });
+export const getAnalytics = () => api.get("/analytics");
 
-  // Actual API call:
-  // return apiClient.get(`/videos/${reportId}/progress`);
+export const listSpeakers = () => api.get("/speakers");
+export const registerSpeaker = ({ name, samples }) => {
+  const fd = new FormData();
+  fd.append("name", name);
+  if (samples?.[0]) fd.append("file", samples[0]);
+  return api.post("/speakers/register", fd);
+};
+export const deleteSpeakerById = (id) => api.delete(`/speakers/${id}`);
+export const renameSpeakerById = (id, name) => api.patch(`/speakers/${id}`, { name });
+export const addSpeakerSamples = (id, samples) => {
+  const fd = new FormData();
+  if (samples?.[0]) fd.append("file", samples[0]);
+  return api.post(`/speakers/${id}/samples`, fd);
 };
 
-/**
- * Get final report
- */
-export const getReport = async (reportId) => {
-  // Mock response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        id: reportId,
-        title: 'AI Meeting Report - Sample',
-        timestamp: new Date().toISOString(),
-        url: 'https://youtube.com/watch?v=example',
-        summary: {
-          duration: '45 minutes',
-          mainTopic: 'Product Strategy & Features',
-          keyTakeaway: 'Focus on user experience improvements and market expansion',
-        },
-        participants: ['John Doe', 'Jane Smith', 'Mike Johnson', 'Sarah Williams'],
-        decisions: [
-          {
-            id: 1,
-            title: 'Implement new dashboard UI',
-            owner: 'John Doe',
-            priority: 'high',
-            deadline: '2024-05-15',
-          },
-          {
-            id: 2,
-            title: 'Conduct market research',
-            owner: 'Jane Smith',
-            priority: 'medium',
-            deadline: '2024-05-20',
-          },
-          {
-            id: 3,
-            title: 'Schedule follow-up meeting',
-            owner: 'Mike Johnson',
-            priority: 'low',
-            deadline: '2024-05-10',
-          },
-        ],
-        tasks: [
-          {
-            id: 1,
-            title: 'Update API documentation',
-            assigned: 'Sarah Williams',
-            status: 'in-progress',
-            deadline: '2024-05-08',
-          },
-          {
-            id: 2,
-            title: 'Review performance metrics',
-            assigned: 'John Doe',
-            status: 'pending',
-            deadline: '2024-05-12',
-          },
-          {
-            id: 3,
-            title: 'Design new features',
-            assigned: 'Jane Smith',
-            status: 'pending',
-            deadline: '2024-05-18',
-          },
-        ],
-        actionItems: [
-          'Prioritize dashboard redesign in next sprint',
-          'Schedule meeting with design team',
-          'Get stakeholder approval for budget allocation',
-        ],
-        transcript: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit...',
-      });
-    }, 800);
-  });
-
-  // Actual API call:
-  // return apiClient.get(`/videos/${reportId}`);
+// Legacy compatibility helpers used by old pages
+export const processYouTubeVideo = async (url, lang = "auto") => {
+  const data = await processMeeting({ youtubeUrl: url, lang });
+  return { success: true, ...data };
 };
 
-/**
- * Get all previous reports
- */
-export const getReports = async () => {
-  // Mock response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve([
-        {
-          id: 'report-1',
-          title: 'Q1 Planning Meeting',
-          date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          duration: '60 minutes',
-          participants: 5,
-        },
-        {
-          id: 'report-2',
-          title: 'Product Launch Discussion',
-          date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          duration: '45 minutes',
-          participants: 4,
-        },
-        {
-          id: 'report-3',
-          title: 'Team Standup - Sprint 15',
-          date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-          duration: '30 minutes',
-          participants: 8,
-        },
-      ]);
-    }, 500);
-  });
-
-  // Actual API call:
-  // return apiClient.get('/videos');
+export const processLocalMediaFile = async (file, lang = "auto") => {
+  const data = await processMeeting({ file, lang });
+  return { success: true, ...data };
 };
 
-/**
- * Delete a report
- */
-export const deleteReport = async (reportId) => {
-  // Mock response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ success: true, message: 'Report deleted' });
-    }, 300);
-  });
-
-  // Actual API call:
-  // return apiClient.delete(`/videos/${reportId}`);
+export const processTextNotes = async () => {
+  throw new Error("Text-only processing is not supported by current backend routes.");
 };
 
-/**
- * Export report as PDF
- */
-export const exportReportAsPDF = async (reportId) => {
-  // Mock response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        success: true,
-        filename: `report-${reportId}.pdf`,
-        url: '/mock-pdf-url',
-      });
-    }, 1000);
-  });
-
-  // Actual API call:
-  // return apiClient.post(`/videos/${reportId}/export-pdf`, {}, {
-  //   responseType: 'blob'
-  // });
+export const downloadReportDocx = async (payload) => {
+  const reportId = payload?.report_id || payload?.reportId;
+  if (!reportId) {
+    throw new Error("No report id available for download.");
+  }
+  return downloadReportPdf(reportId);
 };
 
-export default apiClient;
+export default api;

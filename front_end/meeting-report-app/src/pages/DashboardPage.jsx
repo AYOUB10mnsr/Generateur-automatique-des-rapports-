@@ -1,144 +1,90 @@
-import React from 'react';
-import { BarChart3, UploadCloud, Clock, Activity, Sparkles, CalendarDays } from 'lucide-react';
-import Button from '../components/Button';
-import Card from '../components/Card';
-import { useFetch, useScrollToTop } from '../hooks/useCustom';
-import { getReports } from '../services/api';
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { FileUp, Link2, Mic, PlayCircle, WandSparkles } from "lucide-react";
+import { toast } from "sonner";
+import { processMeeting } from "../services/api";
+import { useSettings } from "../contexts/SettingsContext";
+import { useReports } from "../hooks/useReports";
+import { Card, Button, Input, Page, Select } from "../components/common/ui";
+import { formatDate } from "../utils";
 
-function DashboardPage() {
-  useScrollToTop();
-  const { data: reports, loading } = useFetch(getReports, []);
+export default function DashboardPage() {
+  const navigate = useNavigate();
+  const { defaultLanguage } = useSettings();
+  const { reports } = useReports();
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [file, setFile] = useState(null);
+  const [lang, setLang] = useState(defaultLanguage);
+  const [busy, setBusy] = useState(false);
 
-  const totalReports = reports?.length ?? 0;
-  const totalUploads = totalReports + 12;
-  const averageDuration = reports
-    ? `${Math.round(reports.reduce((sum, item) => sum + parseInt(item.duration, 10), 0) / Math.max(reports.length, 1))} min`
-    : '--';
+  const stats = useMemo(() => ({
+    meetings: reports.length,
+    languages: new Set(reports.map((r) => r.report_language).filter(Boolean)).size,
+  }), [reports]);
 
-  const recentActivity = reports
-    ? reports.slice(0, 4).map((report) => ({
-        id: report.id,
-        title: report.title,
-        date: new Date(report.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        participants: report.participants,
-      }))
-    : [];
+  const submit = async () => {
+    if (!file && !youtubeUrl) return toast.error("Add file or YouTube URL first");
+    try {
+      setBusy(true);
+      const result = await processMeeting({ file, youtubeUrl, lang });
+      toast.success("Pipeline started");
+      navigate("/processing", { state: { result, source: file?.name || youtubeUrl, lang } });
+    } catch (e) {
+      toast.error(e?.message || "Processing failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="space-y-8 py-8">
-      <div className="space-y-3">
-        <div className="inline-flex items-center rounded-full bg-blue-100/80 px-4 py-2 text-sm font-semibold text-blue-700 dark:bg-slate-800 dark:text-blue-300">
-          <Sparkles className="w-4 h-4 mr-2" />
-          Dashboard overview
-        </div>
-        <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100">MeetAI Dashboard</h1>
-        <p className="max-w-2xl text-slate-600 dark:text-slate-300">
-          Monitor recent activity, track uploads, and review performance insights from your meeting reports.
-        </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-soft-lg">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase opacity-80">Total reports</p>
-              <p className="mt-3 text-4xl font-bold">{loading ? '...' : totalReports}</p>
-            </div>
-            <div className="rounded-3xl bg-white/15 p-3">
-              <BarChart3 className="w-6 h-6 text-white" />
-            </div>
+    <Page>
+      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <Card className="relative overflow-hidden">
+          <motion.div animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 6, repeat: Infinity }} className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(52,255,146,0.24),transparent_40%)]" />
+          <h1 className="font-display text-3xl">Futuristic Meeting Intelligence</h1>
+          <p className="mt-2 text-muted">Upload audio/video or paste YouTube link and generate multilingual speaker-aware reports.</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="card-shell p-3"><p className="text-xs text-muted">Total meetings</p><p className="text-2xl font-bold">{stats.meetings}</p></div>
+            <div className="card-shell p-3"><p className="text-xs text-muted">Detected languages</p><p className="text-2xl font-bold">{stats.languages}</p></div>
+          </div>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button onClick={() => navigate("/history")} variant="ghost"><PlayCircle size={16} /> View History</Button>
+            <Button onClick={() => navigate("/speakers")} variant="ghost"><Mic size={16} /> Register Speaker</Button>
           </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-soft-lg">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase opacity-80">Total uploads</p>
-              <p className="mt-3 text-4xl font-bold">{loading ? '...' : totalUploads}</p>
-            </div>
-            <div className="rounded-3xl bg-white/10 p-3">
-              <UploadCloud className="w-6 h-6 text-cyan-200" />
-            </div>
+        <Card>
+          <h2 className="font-display text-lg">Generate Report</h2>
+          <div className="mt-4 space-y-3">
+            <label className="text-sm text-muted">Drag & Drop / Upload file</label>
+            <label className="input-shell flex cursor-pointer items-center justify-center gap-2 border-dashed py-6 text-sm">
+              <FileUp size={17} /> {file ? file.name : "Choose audio/video"}
+              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </label>
+            <label className="text-sm text-muted">YouTube URL</label>
+            <Input value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+            <label className="text-sm text-muted">Report language</label>
+            <Select value={lang} onChange={(e) => setLang(e.target.value)}>
+              <option value="auto">Auto</option><option value="fr">French</option><option value="en">English</option><option value="ar">Arabic</option>
+            </Select>
+            <Button onClick={submit} disabled={busy}><WandSparkles size={16} /> {busy ? "Starting..." : "Generate Report"}</Button>
           </div>
         </Card>
+      </section>
 
-        <Card className="bg-gradient-to-br from-cyan-500 to-indigo-600 text-white shadow-soft-lg">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase opacity-80">Avg meeting length</p>
-              <p className="mt-3 text-4xl font-bold">{loading ? '...' : averageDuration}</p>
-            </div>
-            <div className="rounded-3xl bg-white/15 p-3">
-              <Clock className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Usage analytics</h2>
-              <p className="text-slate-600 dark:text-slate-300">Static insights with trends and outcomes from recent reports.</p>
-            </div>
-            <Button variant="secondary" size="sm">View all reports</Button>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {[
-              { label: 'Insight score', value: '92%', icon: <Activity className="w-5 h-5 text-sky-500" /> },
-              { label: 'AI accuracy', value: '97%', icon: <Sparkles className="w-5 h-5 text-cyan-500" /> },
-            ].map((item) => (
-              <div key={item.label} className="rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900">
-                <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
-                  {item.icon}
-                  <p className="text-sm font-semibold">{item.label}</p>
-                </div>
-                <p className="mt-4 text-3xl font-bold text-slate-900 dark:text-white">{item.value}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="space-y-5">
-          <div className="flex items-center gap-3 text-slate-900 dark:text-slate-100">
-            <CalendarDays className="w-5 h-5 text-blue-500" />
-            <h2 className="text-xl font-semibold">Recent activity</h2>
-          </div>
-          <div className="space-y-3">
-            {loading ? (
-              <p className="text-slate-600 dark:text-slate-400">Loading recent updates...</p>
-            ) : recentActivity.length === 0 ? (
-              <p className="text-slate-600 dark:text-slate-400">No recent reports yet.</p>
-            ) : (
-              recentActivity.map((item) => (
-                <div key={item.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900 dark:text-slate-100">{item.title}</h3>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{item.participants} participants</p>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.date}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
-
-      <Card className="rounded-[2rem] bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-100">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Need a quick summary?</h2>
-            <p className="text-slate-600 dark:text-slate-300">Use MeetAI to generate transcript summaries, action items, and export-ready reports in a few clicks.</p>
-          </div>
-          <Button variant="primary">Start a new upload</Button>
+      <Card>
+        <div className="mb-4 flex items-center gap-2"><Link2 size={16} /><h3 className="font-display text-lg">Recent Reports</h3></div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {reports.slice(0, 6).map((r) => (
+            <button key={r.id} onClick={() => navigate(`/reports/${r.id}`)} className="card-shell text-left transition hover:scale-[1.01]">
+              <p className="font-semibold">Report #{r.id}</p>
+              <p className="text-sm text-muted">{formatDate(r.created_at)}</p>
+              <p className="mt-2 text-xs uppercase tracking-widest text-accent">{r.report_language || "en"}</p>
+            </button>
+          ))}
         </div>
       </Card>
-    </div>
+    </Page>
   );
 }
-
-export default DashboardPage;
