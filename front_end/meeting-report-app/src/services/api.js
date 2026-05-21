@@ -63,6 +63,13 @@ export const getReportStatus = (id) => api.get(`/reports/${id}/status`);
 export const deleteReportById = (id) => api.delete(`/reports/${id}`);
 export const downloadReportPdf = (id) => api.get(`/reports/${id}/pdf`, { responseType: "blob" });
 export const getAnalytics = () => api.get("/analytics");
+export const ragQuery = ({ question, top_k = 8, report_id, speaker, conversation_id }) =>
+  api.post("/rag/query", { question, top_k, report_id, speaker, conversation_id });
+export const ragDebug = ({ report_id, question, top_k = 8 }) =>
+  api.get(`/rag/debug/${report_id}`, { params: { question, top_k } });
+export const createConversation = ({ report_id }) => api.post("/conversations", { report_id });
+export const listReportConversations = (report_id) => api.get(`/reports/${report_id}/conversations`);
+export const getConversationMessages = (conversation_id) => api.get(`/conversations/${conversation_id}/messages`);
 
 export const listSpeakers = () => api.get("/speakers");
 export const registerSpeaker = ({ name, samples }) => {

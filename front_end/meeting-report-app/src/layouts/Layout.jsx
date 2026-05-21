@@ -5,12 +5,12 @@ import { ToastContainer } from '../components/Toast';
 import { useLocalStorage } from '../hooks/useCustom';
 
 function Layout({ children }) {
-  const [theme, setTheme] = useLocalStorage('meetai-theme', 'light');
+  const [theme, setTheme] = useLocalStorage('meetai-theme', 'cyber');
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      document.documentElement.classList.toggle('dark', theme === 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
     }
   }, [theme]);
 
@@ -24,20 +24,28 @@ function Layout({ children }) {
   };
 
   const toggleTheme = () => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+    setTheme((current) => (current === 'cyber' ? 'light' : 'cyber'));
   };
 
   window.showToast = addToast;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-smooth">
+    <div className="min-h-screen flex flex-col bg-app text-app relative">
+      {/* Grid background */}
+      <div className="pointer-events-none fixed inset-0 app-grid" />
+      
       <Navbar theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main prend tout l'espace disponible pour pousser le footer en bas */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {children}
       </main>
 
-      <Footer />
+      {/* Footer toujours en bas */}
+      <div className="relative z-10 mt-auto">
+        <Footer />
+      </div>
+      
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );

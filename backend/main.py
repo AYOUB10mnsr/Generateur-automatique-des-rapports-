@@ -11,9 +11,7 @@ from services.reporter import summarize_text
 from services.speaker import process_speakers
 from sqlalchemy.orm import Session
 from services.transcriber import transcribe_audio
-from fastapi import FastAPI
-
-app = FastAPI()
+from app.main import app as app
 
 
 def run_pipeline(source: str, requested_language: str = "auto") -> dict[str, Any]:

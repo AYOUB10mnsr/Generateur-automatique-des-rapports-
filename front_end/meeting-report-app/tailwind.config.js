@@ -5,6 +5,16 @@ export default {
     extend: {
       fontFamily: {
         display: ["Orbitron", "sans-serif"],
+        sans: ["Space Grotesk", "Inter", "sans-serif"],
+        mono: ["Roboto Mono", "monospace"],
+      },
+      colors: {
+        background: 'var(--bg)',
+        surface: 'var(--card)',
+        accent: 'var(--accent)',
+        border: 'var(--border)',
+        'text-primary': 'var(--text)',
+        'text-secondary': 'var(--muted)',
       },
     },
   },

@@ -12,3 +12,6 @@ sqlalchemy
 numpy
 arabic-reshaper
 python-bidi
+ollama
+chromadb
+sentence-transformers

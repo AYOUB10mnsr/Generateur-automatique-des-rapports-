@@ -29,10 +29,18 @@ class Report(Base):
     step = Column(String, nullable=False, default="finished")
     error_message = Column(Text, nullable=True)
     pdf_path = Column(String, nullable=True)
+    provider_used = Column(String, nullable=True)
+    llm_generation_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     segments = relationship(
         "Segment",
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    conversations = relationship(
+        "Conversation",
         back_populates="report",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -50,3 +58,32 @@ class Segment(Base):
     text = Column(Text, nullable=False)
 
     report = relationship("Report", back_populates="segments")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    report = relationship("Report", back_populates="conversations")
+    messages = relationship(
+        "Message",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    conversation = relationship("Conversation", back_populates="messages")

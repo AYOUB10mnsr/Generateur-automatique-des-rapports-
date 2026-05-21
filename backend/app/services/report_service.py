@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from app.database.models import Report, Segment
 from app.services.export_service import build_pdf
+from app.services.rag_service import get_rag_service
 from app.services.extractor_service import extract_from_source
 from app.services.transcription_service import transcribe
 from app.utils.audio import ensure_dir
@@ -14,7 +15,7 @@ from app.utils.language import (
     resolve_report_language,
 )
 from database.db import SessionLocal
-from services.reporter import summarize_text
+from services.reporter import summarize_text_with_provider
 from services.speaker import process_speakers
 from sqlalchemy.orm import Session
 
@@ -54,7 +55,8 @@ def run_processing_pipeline(
     if progress_hook:
         progress_hook("summary_generation")
     print("[REPORT] Generating multilingual summary...")
-    summary = summarize_text(merged_text or transcription.get("text", ""), report_language=report_language)
+    summary_result = summarize_text_with_provider(merged_text or transcription.get("text", ""), report_language=report_language)
+    summary = summary_result.summary
 
     speakers = _unique_speakers(merged_segments)
     ensure_dir(outputs_dir)
@@ -74,6 +76,8 @@ def run_processing_pipeline(
         "pdf_path": pdf_path,
         "report_language": report_language,
         "transcription": merged_text or transcription.get("text", ""),
+        "provider_used": summary_result.provider_used,
+        "llm_generation_ms": summary_result.generation_ms,
     }
 
 
@@ -98,7 +102,7 @@ def save_report(db: Session, source: str, transcription: str, summary: str, repo
     return report
 
 
-def list_reports(db: Session) -> list[Report]:
+def list_reports(db: Session) -> list:
     return db.query(Report).order_by(Report.created_at.desc()).all()
 
 
@@ -195,6 +199,8 @@ def _set_report_final_success(report_id: int, result: dict[str, Any]) -> None:
         report.summary = result["summary"]
         report.report_language = result["report_language"]
         report.pdf_path = result["pdf_path"]
+        report.provider_used = result.get("provider_used")
+        report.llm_generation_ms = result.get("llm_generation_ms")
         report.error_message = None
 
         db.query(Segment).filter(Segment.report_id == report.id).delete()
@@ -214,6 +220,17 @@ def _set_report_final_success(report_id: int, result: dict[str, Any]) -> None:
         db.commit()
         db.refresh(report)
         print(f"[DB STATUS] report_id={report.id} status={report.status} step={report.step}")
+
+        try:
+            rag_service = get_rag_service()
+            rag_service.index_report(
+                report_id=int(report.id),
+                transcription=str(result.get("transcription", "")),
+                summary=str(result.get("summary", "")),
+                segments=list(result.get("segments", []) or []),
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[RAG] Indexing failed for report_id={report.id}: {exc}")
     finally:
         db.close()
 

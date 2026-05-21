@@ -1,55 +1,36 @@
 from __future__ import annotations
 
-import os
-from typing import Any
+from dataclasses import dataclass
 
-from dotenv import load_dotenv
-from openai import OpenAI
+from ai_provider import AIProviderManager
 
 from services.language_utils import DEFAULT_REPORT_LANGUAGE
 from services.prompt_builder import build_system_prompt, build_user_prompt
 
-load_dotenv()
+
+@dataclass(frozen=True)
+class SummaryResult:
+    summary: str
+    provider_used: str
+    generation_ms: float
 
 
 def summarize_text(text: str, report_language: str = DEFAULT_REPORT_LANGUAGE) -> str:
+    return summarize_text_with_provider(text=text, report_language=report_language).summary
+
+
+def summarize_text_with_provider(text: str, report_language: str = DEFAULT_REPORT_LANGUAGE) -> SummaryResult:
     if not text or not text.strip():
         raise ValueError("`text` must be a non-empty string.")
 
-    client, model = _build_client()
+    manager = AIProviderManager()
     system_prompt = build_system_prompt(report_language)
     user_prompt = build_user_prompt(text, report_language)
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
     try:
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.2,
-            max_tokens=1200,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        result = manager.generate(full_prompt)
     except Exception as exc:
         raise RuntimeError(f"LLM summarization request failed: {exc}") from exc
 
-    content = _extract_text(response)
-    if not content:
-        raise RuntimeError("LLM returned an empty summary.")
-    return content.strip()
-
-
-def _build_client() -> tuple[OpenAI, str]:
-    api_key = os.getenv("GROQ_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("LLM_BASE_URL") or "https://api.groq.com/openai/v1"
-    model = os.getenv("LLM_MODEL") or "llama-3.3-70b-versatile"
-    if not api_key:
-        raise RuntimeError("Missing API key. Set GROQ_API_KEY in your .env file.")
-    return OpenAI(api_key=api_key, base_url=base_url), model
-
-
-def _extract_text(response: Any) -> str:
-    try:
-        return response.choices[0].message.content or ""
-    except Exception:
-        return ""
+    return SummaryResult(summary=result.text, provider_used=result.provider, generation_ms=result.latency_ms)

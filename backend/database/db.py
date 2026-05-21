@@ -79,3 +79,11 @@ def _apply_sqlite_safe_migrations() -> None:
             conn.execute(text("ALTER TABLE reports ADD COLUMN pdf_path VARCHAR"))
             conn.commit()
             print("[DB] Migration applied: added reports.pdf_path")
+        if "provider_used" not in columns:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN provider_used VARCHAR"))
+            conn.commit()
+            print("[DB] Migration applied: added reports.provider_used")
+        if "llm_generation_ms" not in columns:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN llm_generation_ms FLOAT"))
+            conn.commit()
+            print("[DB] Migration applied: added reports.llm_generation_ms")

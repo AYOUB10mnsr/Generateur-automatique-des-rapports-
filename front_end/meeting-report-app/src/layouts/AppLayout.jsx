@@ -1,9 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
-import { BarChart3, FileClock, Home, Mic2, Settings, Sparkles } from "lucide-react";
+import { BarChart3, FileClock, Home, LayoutDashboard, Mic2, Settings, Sparkles } from "lucide-react";
 import ThemeSwitcher from "../components/common/ThemeSwitcher";
 
 const nav = [
-  { to: "/", label: "Dashboard", icon: Home },
+  { to: "/", label: "Home", icon: Home },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/history", label: "History", icon: FileClock },
   { to: "/speakers", label: "Speakers", icon: Mic2 },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -12,10 +13,12 @@ const nav = [
 
 export default function AppLayout({ children }) {
   const { pathname } = useLocation();
+  const isHome = pathname === "/";
 
   return (
     <div className="min-h-screen bg-app text-app">
       <div className="pointer-events-none fixed inset-0 app-grid" />
+      
       <header className="sticky top-0 z-40 border-b border-app bg-app/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
           <div className="flex items-center gap-3">
@@ -29,6 +32,7 @@ export default function AppLayout({ children }) {
           </div>
           <ThemeSwitcher />
         </div>
+        
         <nav className="mx-auto flex max-w-7xl gap-2 overflow-auto px-4 pb-3 md:px-6">
           {nav.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
@@ -41,7 +45,11 @@ export default function AppLayout({ children }) {
           })}
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">{children}</main>
+
+      {/* Homepage = full-width, no padding. Other pages = normal padded layout */}
+      <main className={isHome ? "" : "mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8"}>
+        {children}
+      </main>
     </div>
   );
 }

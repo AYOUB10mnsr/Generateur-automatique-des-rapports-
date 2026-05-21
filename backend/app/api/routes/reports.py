@@ -26,6 +26,9 @@ async def get_reports(db: Session = Depends(get_db)) -> list[ReportListItem]:
             report_language=r.report_language,
             status=r.status,
             step=r.step,
+            provider_used=r.provider_used,
+            speaker_count=len({(s.speaker_name or "Unknown").strip() or "Unknown" for s in (r.segments or [])}),
+            segment_count=len(r.segments or []),
             created_at=r.created_at,
         )
         for r in rows
@@ -60,6 +63,8 @@ async def get_report_by_id(report_id: int, db: Session = Depends(get_db)) -> Rep
         step=report.step,
         error_message=report.error_message,
         pdf_path=report.pdf_path,
+        provider_used=report.provider_used,
+        llm_generation_ms=report.llm_generation_ms,
         created_at=report.created_at,
         segments=segments,
     )
@@ -153,6 +158,8 @@ async def get_report_status(report_id: int, db: Session = Depends(get_db)) -> Re
         step=report.step,
         error_message=report.error_message,
         pdf_path=report.pdf_path,
+        provider_used=report.provider_used,
+        llm_generation_ms=report.llm_generation_ms,
         created_at=report.created_at,
         segments=segments,
     )

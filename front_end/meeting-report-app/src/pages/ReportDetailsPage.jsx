@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Copy, Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryReport } from "../hooks/useReportDetails";
-import { downloadReportPdf } from "../services/api";
+import { downloadReportPdf, ragQuery } from "../services/api";
 import { Button, Card, Input, Page } from "../components/common/ui";
 import { downloadBlob, formatDate } from "../utils";
 
@@ -11,6 +11,9 @@ export default function ReportDetailsPage() {
   const { id } = useParams();
   const { report, loading } = useQueryReport(id);
   const [q, setQ] = useState("");
+  const [aiQuestion, setAiQuestion] = useState("");
+  const [aiAnswer, setAiAnswer] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const filteredSegments = useMemo(() => {
     const segs = report?.segments || [];
@@ -30,6 +33,29 @@ export default function ReportDetailsPage() {
     }
     const blob = await downloadReportPdf(id);
     downloadBlob(blob, `report-${id}.pdf`);
+  };
+
+  const onAskAi = async () => {
+    if (!aiQuestion.trim()) {
+      toast.error("Veuillez saisir une question.");
+      return;
+    }
+    if (!report?.id) {
+      toast.error("Rapport introuvable.");
+      return;
+    }
+    try {
+      setAiLoading(true);
+      const data = await ragQuery({
+        question: aiQuestion.trim(),
+        report_id: Number(report.id),
+      });
+      setAiAnswer(data?.answer || "");
+    } catch (e) {
+      toast.error(e?.message || "Erreur lors de la requête IA");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   if (loading) return <Page><Card>Loading report...</Card></Page>;
@@ -69,6 +95,23 @@ export default function ReportDetailsPage() {
       <Card>
         <h2 className="font-display text-lg">AI Summary</h2>
         <pre className="mt-2 whitespace-pre-wrap text-sm">{report?.summary}</pre>
+      </Card>
+
+      <Card>
+        <h2 className="font-display text-lg">Chat IA</h2>
+        <div className="mt-3 flex gap-2">
+          <Input
+            value={aiQuestion}
+            onChange={(e) => setAiQuestion(e.target.value)}
+            placeholder="Posez une question sur cette réunion..."
+          />
+          <Button onClick={onAskAi} disabled={aiLoading}>
+            {aiLoading ? "Analyse..." : "Envoyer"}
+          </Button>
+        </div>
+        <p className="mt-3 whitespace-pre-wrap text-sm">
+          {aiAnswer || "La réponse IA apparaîtra ici."}
+        </p>
       </Card>
 
       <Card>

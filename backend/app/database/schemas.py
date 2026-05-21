@@ -22,6 +22,8 @@ class ReportOut(BaseModel):
     step: str
     error_message: str | None = None
     pdf_path: str | None = None
+    provider_used: str | None = None
+    llm_generation_ms: float | None = None
     created_at: datetime
     segments: list[SegmentOut] = []
 
@@ -32,6 +34,9 @@ class ReportListItem(BaseModel):
     report_language: str
     status: str
     step: str
+    provider_used: str | None = None
+    speaker_count: int = 0
+    segment_count: int = 0
     created_at: datetime
 
 
@@ -87,3 +92,42 @@ class AnalyticsOut(BaseModel):
     total_segments: int
     languages: dict[str, int]
     top_speakers: list[dict[str, int | str]]
+
+
+class RAGQueryIn(BaseModel):
+    question: str
+    top_k: int = Field(default=8, ge=1, le=20)
+    report_id: int | None = None
+    speaker: str | None = None
+    conversation_id: int | None = None
+
+
+class RAGSourceOut(BaseModel):
+    report_id: int
+    speaker: str
+    timestamp: str
+    text: str
+
+
+class RAGQueryOut(BaseModel):
+    answer: str
+
+
+class ConversationCreateIn(BaseModel):
+    report_id: int
+
+
+class ConversationCreateOut(BaseModel):
+    conversation_id: int
+
+
+class ConversationOut(BaseModel):
+    id: int
+    report_id: int
+    title: str | None = None
+    created_at: datetime
+
+
+class MessageOut(BaseModel):
+    role: str
+    content: str

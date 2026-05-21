@@ -39,6 +39,8 @@ async def process_file(
             report_language=lang if lang else "auto",
             status="processing",
             step="uploading",
+            provider_used=None,
+            llm_generation_ms=None,
         )
         db.add(report)
         db.commit()
@@ -87,6 +89,8 @@ async def process_youtube(
             report_language=lang if lang else "auto",
             status="processing",
             step="uploading",
+            provider_used=None,
+            llm_generation_ms=None,
         )
         db.add(report)
         db.commit()
